@@ -1,0 +1,726 @@
+{
+  "name": "Ai feedback analysis system",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Feedback Form",
+        "formDescription": "Fill the form to give your feedback",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Name",
+              "placeholder": "Your Name",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Email",
+              "fieldType": "email",
+              "placeholder": "Your Email",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Feedback",
+              "fieldType": "textarea",
+              "placeholder": "Your Feedback",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.5,
+      "position": [
+        -1248,
+        128
+      ],
+      "id": "94ed8e0e-bc1f-4638-afba-7c766d3dd8dc",
+      "name": "Feedback Form",
+      "webhookId": "c70424aa-260f-4edb-97b4-8572db4691d6"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a feedback classification engine. Analyze the following customer feedback and return ONLY a valid JSON object — no explanation, no markdown, no extra text.\n\nClassify into EXACTLY one of these categories:\n- Complaint\n- Compliment\n- Query\n- Feature Request\n- Other\n\nAlso provide:\n- sentiment: a score from -1.0 (very negative) to 1.0 (very positive)\n- priority: \"High\", \"Medium\", or \"Low\" (High = urgent complaint or critical bug, Medium = general complaint or feature request, Low = compliment or general query)\n- summary: a one-sentence summary of the feedback (max 20 words)\n\nRespond ONLY with this JSON structure:\n{\n  \"category\": \"<one of the five categories above>\",\n  \"sentiment\": <float between -1.0 and 1.0>,\n  \"priority\": \"<High|Medium|Low>\",\n  \"summary\": \"<one sentence summary>\"\n}\n\nFeedback: {{ $json.Feedback }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -1008,
+        128
+      ],
+      "id": "985e313f-adbb-4006-abbd-93675debd736",
+      "name": "AI Classifier"
+    },
+    {
+      "parameters": {
+        "model": "nvidia/nemotron-3-super-120b-a12b:free",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        -1120,
+        320
+      ],
+      "id": "4c66f7f0-20bd-4361-a69a-7264d017a80d",
+      "name": "OpenRouter Chat Model",
+      "credentials": {
+        "openRouterApi": {
+          "id": "EIs10d4dZs2j35GT",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.output || '';\n\nlet parsed;\ntry {\n  const cleaned = raw.replace(/```json|```/g, '').trim();\n  parsed = JSON.parse(cleaned);\n} catch (e) {\n  parsed = {\n    category: 'Other',\n    sentiment: 0,\n    priority: 'Low',\n    summary: 'Could not parse feedback automatically.'\n  };\n}\n\nconst validCategories = ['Complaint', 'Compliment', 'Query', 'Feature Request', 'Other'];\nif (!validCategories.includes(parsed.category)) {\n  parsed.category = 'Other';\n}\n\n// Build smart reply based on category\nconst name = $('Feedback Form').first().json.Name;\nconst feedback = $('Feedback Form').first().json.Feedback;\n\nconst replyMap = {\n  'Complaint': {\n    subject: `We're on it, ${name} — your complaint has been received`,\n    message: `Hi ${name},\\n\\nWe're sorry to hear about your experience. Your complaint has been flagged as ${parsed.priority} priority and our team will look into it immediately.\\n\\nHere's what you reported:\\n\"${feedback}\"\\n\\nWe take every complaint seriously and will follow up with you if we need more details. Thank you for helping us improve.\\n\\nApologies again,\\nThe Support Team`\n  },\n  'Compliment': {\n    subject: `This made our day, ${name}! 🎉`,\n    message: `Hi ${name},\\n\\nThis made our day! Thank you so much for taking the time to share such kind words.\\n\\nWhat you said:\\n\"${feedback}\"\\n\\nFeedback like yours keeps our team motivated. We truly appreciate you.\\n\\nWith gratitude,\\nThe Team`\n  },\n  'Query': {\n    subject: `We got your question, ${name} — we'll follow up shortly`,\n    message: `Hi ${name},\\n\\nThank you for reaching out! We've received your question and someone from our team will follow up with a detailed answer shortly.\\n\\nYour question:\\n\"${feedback}\"\\n\\nWe aim to respond within 24–48 hours. Stay tuned!\\n\\nBest,\\nThe Support Team`\n  },\n  'Feature Request': {\n    subject: `Love the idea, ${name} — we've logged your feature request`,\n    message: `Hi ${name},\\n\\nThank you for sharing your idea! We've logged your feature request and shared it directly with our product team for review.\\n\\nYour suggestion:\\n\"${feedback}\"\\n\\nWe can't promise a timeline, but every request is considered seriously. We appreciate you helping shape the product.\\n\\nExcited to build,\\nThe Product Team`\n  },\n  'Other': {\n    subject: `Thanks for reaching out, ${name}`,\n    message: `Hi ${name},\\n\\nThank you for getting in touch. We've received your message and our team will review it shortly.\\n\\nYour message:\\n\"${feedback}\"\\n\\nWe'll follow up if needed.\\n\\nBest,\\nThe Team`\n  }\n};\n\nconst reply = replyMap[parsed.category] || replyMap['Other'];\n\nreturn [{\n  json: {\n    ...parsed,\n    Name: name,\n    Email: $('Feedback Form').first().json.Email,\n    Feedback: feedback,\n    replySubject: reply.subject,\n    replyMessage: reply.message\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -736,
+        128
+      ],
+      "id": "3fc72d5d-b8e3-4678-b134-5ef374639176",
+      "name": "Parse & Build Smart Reply"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.category }}",
+                    "rightValue": "Complaint",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "rule-complaint"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.category }}",
+                    "rightValue": "Compliment",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "rule-compliment"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.category }}",
+                    "rightValue": "Query",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "rule-query"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.category }}",
+                    "rightValue": "Feature Request",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "rule-feature"
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -496,
+        128
+      ],
+      "id": "3af92fa3-d076-41fe-8f33-99e2f9bc8086",
+      "name": "Route by Category"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "13TiI54vGdEy0UoaMhpC4y73hQMVPKz4f7yDOWv8e3x4",
+          "mode": "list",
+          "cachedResultName": "Contact Feedback",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/13TiI54vGdEy0UoaMhpC4y73hQMVPKz4f7yDOWv8e3x4/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Feedback",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/13TiI54vGdEy0UoaMhpC4y73hQMVPKz4f7yDOWv8e3x4/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Name": "={{ $json.Name }}",
+            "Email": "={{ $json.Email }}",
+            "Feedback": "={{ $json.Feedback }}",
+            "Category": "={{ $json.category }}",
+            "Sentiment": "={{ $json.sentiment }}",
+            "Priority": "={{ $json.priority }}",
+            "Summary": "={{ $json.summary }}",
+            "Time": "={{ $now }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Feedback",
+              "displayName": "Feedback",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Category",
+              "displayName": "Category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Sentiment",
+              "displayName": "Sentiment",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Priority",
+              "displayName": "Priority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Summary",
+              "displayName": "Summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Time",
+              "displayName": "Time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -240,
+        128
+      ],
+      "id": "2369a81c-d350-4006-abeb-8eafc25eac88",
+      "name": "Write to Google Sheets",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "6TLExBkyRmoZmwMO",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.Email }}",
+        "subject": "={{ $('Parse & Build Smart Reply').item.json.replySubject }}",
+        "emailType": "text",
+        "message": "={{ $('Parse & Build Smart Reply').item.json.replyMessage }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "64cfa308-f6e4-4e4a-ab13-5a2663d1b528",
+      "name": "Send Smart Reply Email",
+      "webhookId": "441ba8d0-c3f8-41aa-8d6b-a722b9dcbc6b",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "sTHwCdKByxEeC9gn",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.priority }}",
+              "rightValue": "High",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "id": "high-priority-check"
+            },
+            {
+              "leftValue": "={{ $json.category }}",
+              "rightValue": "Complaint",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "id": "complaint-check"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        240
+      ],
+      "id": "b464c16e-052d-416e-ab86-7eea77a29553",
+      "name": "Is High Priority Complaint?"
+    },
+    {
+      "parameters": {
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        240,
+        192
+      ],
+      "id": "e147b0ba-2333-4e32-b2fd-0fa34c64a896",
+      "name": "Slack Alert (High Priority)",
+      "webhookId": "e71b6e08-9c39-4f8c-8fef-a093492f4706",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1248,
+        528
+      ],
+      "id": "d534d2f6-0a04-4291-8efb-cb722e26ee76",
+      "name": "Every Monday 9AM"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "13TiI54vGdEy0UoaMhpC4y73hQMVPKz4f7yDOWv8e3x4",
+          "mode": "list",
+          "cachedResultName": "Contact Feedback",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/13TiI54vGdEy0UoaMhpC4y73hQMVPKz4f7yDOWv8e3x4/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Feedback",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/13TiI54vGdEy0UoaMhpC4y73hQMVPKz4f7yDOWv8e3x4/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -1008,
+        528
+      ],
+      "id": "26608954-d52e-4e5c-b0b8-f2832a98fff4",
+      "name": "Read All Feedback (Weekly)",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "6TLExBkyRmoZmwMO",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const allRows = $input.all();\n\nconst now = new Date();\nconst sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);\n\nconst lastWeekRows = allRows.filter(row => {\n  const rowTime = new Date(row.json.Time);\n  return rowTime >= sevenDaysAgo;\n});\n\nif (lastWeekRows.length === 0) {\n  return [{ json: { hasData: false, totalCount: 0, summaryList: 'No feedback this week.', categoryText: 'None', highPriorityText: 'None', avgSentiment: '0.00', highCount: 0 } }];\n}\n\nconst categoryCounts = {};\nlet sentimentTotal = 0;\nconst summaries = [];\nconst highPriorityComplaints = [];\n\nlastWeekRows.forEach(row => {\n  const cat = row.json.Category || 'Other';\n  categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;\n  sentimentTotal += parseFloat(row.json.Sentiment) || 0;\n  if (row.json.Summary) summaries.push(row.json.Summary);\n  if (row.json.Category === 'Complaint' && row.json.Priority === 'High') {\n    highPriorityComplaints.push(row.json.Summary || row.json.Feedback);\n  }\n});\n\nconst avgSentiment = (sentimentTotal / lastWeekRows.length).toFixed(2);\nconst categoryText = Object.entries(categoryCounts).map(([cat, count]) => `  • ${cat}: ${count}`).join('\\n');\nconst highPriorityText = highPriorityComplaints.length > 0 ? highPriorityComplaints.map(s => `  ⚠️ ${s}`).join('\\n') : '  None this week ✅';\nconst summaryList = summaries.slice(0, 20).join(' | ');\n\nreturn [{ json: { hasData: true, totalCount: lastWeekRows.length, categoryText, highPriorityText, avgSentiment, summaryList, highCount: highPriorityComplaints.length } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -768,
+        528
+      ],
+      "id": "b228b641-058f-4940-8b4d-d22dfa36ffd0",
+      "name": "Aggregate Last 7 Days"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a product analyst. Based on these customer feedback summaries from the past week, write a short 3-sentence insight for a product team.\n\nFocus on: the biggest recurring problem, what users liked, and one actionable recommendation. Be direct. No bullet points. Just 3 clean sentences.\n\nFeedback summaries: {{ $json.summaryList }}\nTotal: {{ $json.totalCount }}\nAvg sentiment: {{ $json.avgSentiment }} (-1 very negative, +1 very positive)\nHigh priority complaints: {{ $json.highCount }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -496,
+        528
+      ],
+      "id": "9a3e1d74-51ca-4bda-85f9-b5c78f87e688",
+      "name": "AI Weekly Insight"
+    },
+    {
+      "parameters": {
+        "model": "nvidia/nemotron-3-super-120b-a12b:free",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        -624,
+        704
+      ],
+      "id": "94b74031-fa87-4145-bd15-013bbff619c5",
+      "name": "OpenRouter Chat Model (Weekly)",
+      "credentials": {
+        "openRouterApi": {
+          "id": "EIs10d4dZs2j35GT",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const agg = $('Aggregate Last 7 Days').first().json;\nconst aiInsight = $input.first().json.output || 'No AI insight generated.';\n\nconst now = new Date();\nconst weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);\nconst dateRange = `${weekStart.toDateString()} – ${now.toDateString()}`;\n\nconst emailBody = `WEEKLY FEEDBACK REPORT\\n${dateRange}\\n${'='.repeat(40)}\\n\\n📊 TOTAL FEEDBACK RECEIVED: ${agg.totalCount}\\n\\n📂 BREAKDOWN BY CATEGORY:\\n${agg.categoryText}\\n\\n🚨 HIGH PRIORITY COMPLAINTS:\\n${agg.highPriorityText}\\n\\n📈 AVERAGE SENTIMENT SCORE: ${agg.avgSentiment} / 1.0\\n(+1 = very happy, -1 = very frustrated)\\n\\n🤖 AI INSIGHT:\\n${aiInsight}\\n\\n${'='.repeat(40)}\\nAuto-generated by AI Feedback Analysis System v3`;\n\nreturn [{ json: { emailBody, dateRange } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -256,
+        528
+      ],
+      "id": "09203394-17e4-4832-95b1-bdc95a436274",
+      "name": "Build Weekly Email"
+    },
+    {
+      "parameters": {
+        "sendTo": "trisha@citcoorg.edu.in",
+        "subject": "=📊 Weekly Feedback Report — {{ $json.dateRange }}",
+        "emailType": "text",
+        "message": "={{ $json.emailBody }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -16,
+        528
+      ],
+      "id": "ff1a8cf0-26df-46a6-9116-cd186e10c7c2",
+      "name": "Send Weekly Report Email",
+      "webhookId": "2dbc7836-317a-4258-b17b-9c674f0b35db",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "NFr4ZykWSbg3hQYV",
+          "name": "Gmail OAuth2 API"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Feedback Form": {
+      "main": [
+        [
+          {
+            "node": "AI Classifier",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Classifier",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Classifier": {
+      "main": [
+        [
+          {
+            "node": "Parse & Build Smart Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse & Build Smart Reply": {
+      "main": [
+        [
+          {
+            "node": "Route by Category",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Category": {
+      "main": [
+        [
+          {
+            "node": "Write to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Write to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Write to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Write to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write to Google Sheets": {
+      "main": [
+        [
+          {
+            "node": "Send Smart Reply Email",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Is High Priority Complaint?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is High Priority Complaint?": {
+      "main": [
+        [
+          {
+            "node": "Slack Alert (High Priority)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every Monday 9AM": {
+      "main": [
+        [
+          {
+            "node": "Read All Feedback (Weekly)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read All Feedback (Weekly)": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Last 7 Days",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Last 7 Days": {
+      "main": [
+        [
+          {
+            "node": "AI Weekly Insight",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model (Weekly)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Weekly Insight",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Weekly Insight": {
+      "main": [
+        [
+          {
+            "node": "Build Weekly Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Weekly Email": {
+      "main": [
+        [
+          {
+            "node": "Send Weekly Report Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "d64737b2-f825-4166-a883-40214f96c61f",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "40e7f94a11c2fee7c41e2e0071b8f589a09eafaeccaf7cf1ed43b011467b6f19"
+  },
+  "nodeGroups": [],
+  "id": "yxQDFaMm1kutnaaW",
+  "tags": []
+}
